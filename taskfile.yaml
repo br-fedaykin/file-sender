@@ -1,0 +1,22 @@
+version: '3'
+
+tasks:
+  setup-poetry:
+    desc: Install Poetry
+    cmds:
+      - curl -sSL https://install.python-poetry.org | python
+
+  setup-project:
+    desc: Setup the Python Poetry package
+    cmds:
+      - poetry install
+
+  run:
+    desc: Run the main project file
+    cmds:
+      - poetry run python file_sender/sender.py {{.CLI_ARGS}}
+
+  run-config:
+    desc: Run the main project file with the config file
+    cmds:
+      - poetry run python file_sender/sender.py --config config.yml

@@ -1,0 +1,5 @@
+attachment: test.txt
+sender_email: < your email >
+recipient_email:
+  - < destination 1 >
+compress: true # if true, send attachment compressed in zip format

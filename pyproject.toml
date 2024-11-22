@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "file-sender"
+version = "0.1.0"
+description = ""
+authors = ["Bruno Arruda <arrudabruno10@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+typer-config = {extras = ["all"], version = "^1.4.2"}
+typer = "^0.13.1"
+boto3 = "^1.35.66"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
