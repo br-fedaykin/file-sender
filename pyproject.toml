@@ -10,6 +10,7 @@ python = "^3.12"
 typer-config = {extras = ["all"], version = "^1.4.2"}
 typer = "^0.13.1"
 boto3 = "^1.35.66"
+split-file-reader = "^0.1.4"
 
 [build-system]
 requires = ["poetry-core"]

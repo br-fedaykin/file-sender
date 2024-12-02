@@ -10,12 +10,15 @@ import zipfile
 from typer_config import use_yaml_config
 from email.message import EmailMessage
 from typer_config.callbacks import argument_list_callback
+from split_file_writer import SplitFileWriter  # type: ignore
+import os
+import glob
 
-app = typer.Typer(add_completion=False, help="Envia arquivos por e-mail")
+HOSTNAME = socket.gethostname()
+DEFAULT_MSG = f"Mensagem enviada via script do host {HOSTNAME} usando AWS SES."
 
-hostname = socket.gethostname()
-DEFAULT_MSG = f"Mensagem enviada via script do host {hostname} usando AWS SES."
 LOG_FILE = "sender.log"
+MAX_FILE_SIZE = 5_000_000  # 5MB
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,7 +29,10 @@ logging.basicConfig(
         logging.StreamHandler(),  # Log também no terminal
     ],
 )
+
 logger = logging.getLogger(__name__)
+
+app = typer.Typer(add_completion=False, help="Envia arquivos por e-mail")
 
 
 def __build_message(
@@ -43,10 +49,23 @@ def __build_message(
 def __compress_file(file: Path):
     logger.info(f"Compressing the file {file}")
     zip_file = file.with_suffix(".zip")
-    with zipfile.ZipFile(zip_file, "w") as z:
-        z.write(
-            file, arcname=file.name, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9
-        )
+    if os.path.getsize(file) <= MAX_FILE_SIZE:
+        with zipfile.ZipFile(zip_file, mode="w") as zipf:
+            zipf.write(
+                file,
+                arcname=file.name,
+                compress_type=zipfile.ZIP_DEFLATED,
+                compresslevel=9,
+            )
+    else:
+        with SplitFileWriter(f"{zip_file}.", MAX_FILE_SIZE) as sfw:
+            with zipfile.ZipFile(file=sfw, mode="w") as zipf:
+                zipf.write(
+                    file,
+                    arcname=file.name,
+                    compress_type=zipfile.ZIP_DEFLATED,
+                    compresslevel=9,
+                )
     return zip_file
 
 
@@ -69,30 +88,38 @@ def send_aws_ses(
     """
     if compress:
         attachment = __compress_file(attachment)
-    email = __build_message(sender_email, recipient_email, subject, msg)
+        attachments = glob.glob(f"{attachment}.*", root_dir=attachment.parent)
+        if len(attachments) == 0:
+            attachments = [attachment]
+    else:
+        attachments = [attachment]
+    for i, att in enumerate(sorted(attachments)):
+        sequence = f"{i+1}/{len(attachments)}"
+        title = f"{subject} - {attachment} ({sequence})"
+        email = __build_message(sender_email, recipient_email, title, msg)
 
-    logger.info(f"Preparing to send file: {attachment}")
-    with open(attachment, "rb") as f:
-        email.add_attachment(
-            f.read(),
-            maintype="application",
-            subtype="octet-stream",
-            filename=attachment.name,
-        )
+        logger.info(f"Preparing to send file: {att}")
+        with open(att, "rb") as f:
+            email.add_attachment(
+                f.read(),
+                maintype="application",
+                subtype="octet-stream",
+                filename=att,
+            )
 
-    try:
-        client = boto3.client("ses", region_name="us-east-1")
-        response = client.send_raw_email(
-            Source=sender_email,
-            Destinations=recipient_email,
-            RawMessage={"Data": email.as_bytes()},
-        )
-        logger.info(
-            f"Email sent successfully to {recipient_email}. Message ID: {response['MessageId']}"
-        )
-    except (BotoCoreError, NoCredentialsError) as e:
-        logger.error(f"Failed to send email: {e}")
-        raise typer.Exit(code=1)
+        try:
+            client = boto3.client("ses", region_name="us-east-1")
+            response = client.send_raw_email(
+                Source=sender_email,
+                Destinations=recipient_email,
+                RawMessage={"Data": email.as_bytes()},
+            )
+            logger.info(
+                f"Email sent successfully to {recipient_email}. Message ID: {response['MessageId']}"
+            )
+        except (BotoCoreError, NoCredentialsError) as e:
+            logger.error(f"Failed to send email: {e}")
+            raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":
