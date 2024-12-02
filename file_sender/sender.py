@@ -88,7 +88,11 @@ def send_aws_ses(
     """
     if compress:
         attachment = __compress_file(attachment)
-        attachments = glob.glob(f"{attachment}.*", root_dir=attachment.parent)
+        attachments = [
+            name
+            for name in os.listdir(attachment.parent)
+            if name.startswith(f"{attachment}.")
+        ]
         if len(attachments) == 0:
             attachments = [attachment]
     else:
